@@ -1,0 +1,14 @@
+[project]
+name = "pylatmparser"
+version = "0.1.0"
+dependencies = [ "bitarray" ]
+requires-python = ">= 3.10"
+authors = [
+    { name = "nu774", email = "honeycomb77@gmail.com" }
+]
+description = "LATM parser"
+license = {text = "MIT License"}
+
+[project.scripts]
+latm2adts = "pylatmparser:latm2adts"
+latmdump = "pylatmparser:latmdump"
