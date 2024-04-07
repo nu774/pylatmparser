@@ -65,9 +65,7 @@ class StreamMuxConfig:
                     stream.audio_specific_config = AudioSpecificConfig.decode(bits)
                 else:
                     asc_len = bits.latm_get_value()
-                    pos = bits.tell()
                     stream.audio_specific_config = AudioSpecificConfig.decode(bits, asc_len)
-                    bits.seek(pos + asc_len)
                 
                 stream.frame_length_type = bits.read(3)
                 if stream.frame_length_type == 0:

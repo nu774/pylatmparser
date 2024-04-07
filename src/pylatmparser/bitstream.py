@@ -18,8 +18,8 @@ class BitReader:
     def tell(self) -> int:
         return self.pos
     
-    def seek(self, pos: int) -> None:
-        self.pos = pos
+    def skip(self, len: int) -> None:
+        self.pos += len
     
     def byte_align(self) -> None:
         self.pos = ((self.pos + 7) // 8) * 8

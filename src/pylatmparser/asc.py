@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from .bitstream import BitReader
+import sys
 
 __all__ = [
     'ChannelElement',
@@ -376,8 +377,10 @@ class AudioSpecificConfig:
                         obj.extension_format.decode_sampling_frequency(bits1)
                     obj.extension_format.channel_configuration = bits1.read(4)
         # consume the original BitStream
-        length = bits1.tell()
-        bits.seek(bits.tell() + length)
+        if bits_to_decode:
+            bits.skip(bits_to_decode)
+        else:
+            bits.skip(bits1.tell())
         return obj
     
     @property
