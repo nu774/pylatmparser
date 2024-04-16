@@ -118,7 +118,8 @@ class ProgramConfigElement:
 
         bits.byte_align()
         comment_field_bytes = bits.read(8)
-        obj.comment_field_data = bits.read_bytes(comment_field_bytes)
+        if comment_field_bytes:
+            obj.comment_field_data = bits.read_bytes(comment_field_bytes)
         return obj
 
 
