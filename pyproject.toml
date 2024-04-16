@@ -1,7 +1,7 @@
 [project]
 name = "pylatmparser"
 version = "0.1.0"
-dependencies = [ "bitarray" ]
+dependencies = [ "flac_bitstream@git+https://github.com/nu774/flac_bitstream" ]
 requires-python = ">= 3.10"
 authors = [
     { name = "nu774", email = "honeycomb77@gmail.com" }
