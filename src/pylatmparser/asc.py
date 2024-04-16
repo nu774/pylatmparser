@@ -22,8 +22,8 @@ __all__ = [
 
 @dataclass(eq=True, slots=True)
 class ChannelElement:
-    is_cpe: int
-    tag_select: int
+    is_cpe: int = 0
+    tag_select: int = 0
 
     @classmethod
     def decode(cls, bits: BitReader, decode_cpe: bool) -> ChannelElement:
