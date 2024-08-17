@@ -62,4 +62,4 @@ class BitWriter:
     
     def tobytes(self) -> bytes:
         self.bits.zero_pad_to_byte_boundary()
-        return self.bits.get_buffer()
+        return bytes(self.bits.get_buffer())
