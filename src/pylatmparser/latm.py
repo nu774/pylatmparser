@@ -5,7 +5,15 @@ from typing import IO, Iterable
 from .bitstream import BitReader
 from .asc import AudioSpecificConfig
 
-__all__ = ['Stream', 'StreamMuxConfig', 'LatmPacket', 'AudioMuxElement', 'audio_sync_stream']
+__all__ = ['Stream', 'StreamMuxConfig', 'LatmPacket', 'AudioMuxElement', 'audio_sync_stream', 'NoStreamMuxConfigError']
+
+class NoStreamMuxConfigError(Exception):
+    """Raised when an AudioMuxElement needs a StreamMuxConfig that hasn't been
+    established yet (useSameStreamMux=1 before any config has been seen, or
+    reliance on out-of-band config that this parser doesn't have access to).
+    audio_sync_stream() treats this as a recoverable condition and skips the
+    frame rather than treating it as a fatal error.
+    """
 
 @dataclass(eq=True, slots=True)
 class Stream:
@@ -176,7 +184,7 @@ class AudioMuxElement:
                 obj.stream_mux_config = StreamMuxConfig.decode(bits, asc_cache)
                 stream_mux_config = obj.stream_mux_config
         if not stream_mux_config:
-            return
+            raise NoStreamMuxConfigError("AudioMuxElement has no StreamMuxConfig to decode against (useSameStreamMux=1 with none established yet, or out-of-band config not supported)")
         mc = stream_mux_config
         if mc.audio_mux_version_a != 0:
             raise NotImplementedError(f"unsupported audioMuxVersionA: {mc.audio_mux_version_a}")
@@ -214,7 +222,10 @@ def audio_sync_stream(fp: IO[bytes]) -> Iterable[AudioMuxElement]:
         if fp.readinto(buf[:audio_mux_length_bytes]) != audio_mux_length_bytes:
             break
         bs = BitReader(buf[:audio_mux_length_bytes])
-        audio_mux_element = AudioMuxElement.decode(bs, stream_mux_config, True, asc_cache)
+        try:
+            audio_mux_element = AudioMuxElement.decode(bs, stream_mux_config, True, asc_cache)
+        except NoStreamMuxConfigError:
+            continue
         if audio_mux_element.stream_mux_config:
             stream_mux_config = audio_mux_element.stream_mux_config
         yield audio_mux_element
