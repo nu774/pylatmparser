@@ -33,7 +33,7 @@ class StreamMuxConfig:
     crc_check_sum: int | None = None
 
     @classmethod
-    def decode(cls, bits: BitReader) -> StreamMuxConfig:
+    def decode(cls, bits: BitReader, asc_cache: list | None = None) -> StreamMuxConfig:
         obj = StreamMuxConfig()
         obj.audio_mux_version = bits.read(1)
         obj.audio_mux_version_a = 0
@@ -62,10 +62,10 @@ class StreamMuxConfig:
                 if use_same_config:
                     stream.audio_specific_config = obj.streams[-1].audio_specific_config
                 elif obj.audio_mux_version == 0:
-                    stream.audio_specific_config = AudioSpecificConfig.decode(bits)
+                    stream.audio_specific_config = cls._decode_asc(bits, asc_cache, stream.id)
                 else:
                     asc_len = bits.latm_get_value()
-                    stream.audio_specific_config = AudioSpecificConfig.decode(bits, asc_len)
+                    stream.audio_specific_config = cls._decode_asc(bits, asc_cache, stream.id, asc_len)
                 
                 stream.frame_length_type = bits.read(3)
                 if stream.frame_length_type == 0:
@@ -97,6 +97,14 @@ class StreamMuxConfig:
         if obj.crc_check_present:
             obj.crc_check_sum = bits.read(8)
         return obj
+
+    @staticmethod
+    def _decode_asc(bits: BitReader, asc_cache: list | None, stream_id: int, bits_to_decode: int = 0) -> AudioSpecificConfig:
+        if asc_cache is None:
+            return AudioSpecificConfig.decode(bits, bits_to_decode)
+        while len(asc_cache) <= stream_id:
+            asc_cache.append([None])
+        return AudioSpecificConfig.decode_cached(bits, asc_cache[stream_id], bits_to_decode)
 
 
 @dataclass(eq=True, slots=True)
@@ -160,12 +168,12 @@ class AudioMuxElement:
     other_data_bit: bytes | None = None
 
     @classmethod
-    def decode(cls, bits: BitReader, stream_mux_config: StreamMuxConfig, mux_config_present: bool) -> AudioMuxElement:
+    def decode(cls, bits: BitReader, stream_mux_config: StreamMuxConfig, mux_config_present: bool, asc_cache: list | None = None) -> AudioMuxElement:
         obj = AudioMuxElement()
         if mux_config_present:
             obj.use_same_stream_mux = bits.read(1)
             if not obj.use_same_stream_mux:
-                obj.stream_mux_config = StreamMuxConfig.decode(bits)
+                obj.stream_mux_config = StreamMuxConfig.decode(bits, asc_cache)
                 stream_mux_config = obj.stream_mux_config
         if not stream_mux_config:
             return
@@ -196,6 +204,7 @@ def resync(fp: IO[bytes], buf: memoryview) -> int:
 
 def audio_sync_stream(fp: IO[bytes]) -> Iterable[AudioMuxElement]:
     stream_mux_config: StreamMuxConfig | None = None
+    asc_cache: list = []
     buf = memoryview(bytearray(0x2000))
     while True:
         word = resync(fp, buf)
@@ -205,7 +214,7 @@ def audio_sync_stream(fp: IO[bytes]) -> Iterable[AudioMuxElement]:
         if fp.readinto(buf[:audio_mux_length_bytes]) != audio_mux_length_bytes:
             break
         bs = BitReader(buf[:audio_mux_length_bytes])
-        audio_mux_element = AudioMuxElement.decode(bs, stream_mux_config, True)
+        audio_mux_element = AudioMuxElement.decode(bs, stream_mux_config, True, asc_cache)
         if audio_mux_element.stream_mux_config:
             stream_mux_config = audio_mux_element.stream_mux_config
         yield audio_mux_element

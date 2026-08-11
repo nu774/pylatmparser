@@ -383,6 +383,27 @@ class AudioSpecificConfig:
         if bits_to_decode:
             bits.skip(bits_to_decode - (bits.tell() - asc_start))
         return obj
+
+    @classmethod
+    def decode_cached(cls, bits: BitReader, cache: list, bits_to_decode: int=0) -> AudioSpecificConfig:
+        # `cache` is a mutable 1-element box holding (bitlen, raw_bytes, obj) of
+        # the most recent decode at this stream slot, or None. Some muxers
+        # (e.g. ARIB STD-B32) resend the full StreamMuxConfig on every LATM/LOAS
+        # frame even though the ASC itself rarely changes, so a cheap raw-bit
+        # peek+compare lets us skip the whole nested decode on a hit. A miss
+        # (or no prior entry) just falls through to a normal decode() from the
+        # untouched position, so correctness never depends on the cache being right.
+        asc_start = bits.tell()
+        prev = cache[0]
+        if prev is not None:
+            prev_len, prev_bytes, prev_obj = prev
+            if bits.peek_bytes(asc_start, prev_len) == prev_bytes:
+                bits.skip(prev_len)
+                return prev_obj
+        obj = cls.decode(bits, bits_to_decode)
+        consumed = bits.tell() - asc_start
+        cache[0] = (consumed, bits.peek_bytes(asc_start, consumed), obj)
+        return obj
     
     @property
     def num_samples_per_frame(self) -> int:

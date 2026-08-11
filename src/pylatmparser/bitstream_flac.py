@@ -29,7 +29,26 @@ class BitReader:
             buf = bytearray((nbits + 7) // 8)
             self.bits.read_byte_block(buf)
         return buf
-    
+
+    def peek_bytes(self, start_bit: int, nbits: int) -> bytes:
+        # Non-mutating: extracts nbits starting at the given absolute bit
+        # position directly from the buffer, without touching the reader's
+        # own cursor or constructing a native reader.
+        if nbits <= 0:
+            return b''
+        start_byte = start_bit // 8
+        bit_offset = start_bit % 8
+        span_bytes = (bit_offset + nbits + 7) // 8
+        raw = self.data[start_byte:start_byte + span_bytes]
+        if len(raw) < span_bytes:
+            return b''  # not enough data left; caller treats this as a guaranteed mismatch
+        val = int.from_bytes(raw, 'big')
+        shift = len(raw) * 8 - bit_offset - nbits
+        val = (val >> shift) & ((1 << nbits) - 1)
+        out_len = (nbits + 7) // 8
+        val <<= out_len * 8 - nbits  # re-justify MSB-first, zero-padded at the end (like read_bytes)
+        return val.to_bytes(out_len, 'big')
+
     def tobytes(self) -> bytes:
         bits = FLAC_BitReader(self.data + b'\0')
         n = self.tell()

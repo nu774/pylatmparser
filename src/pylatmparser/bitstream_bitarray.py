@@ -28,7 +28,10 @@ class BitReader:
         value = self.bits[self.pos:self.pos+nbits].tobytes()
         self.pos += nbits
         return value
-    
+
+    def peek_bytes(self, start_bit: int, nbits: int) -> bytes:
+        return self.bits[start_bit:start_bit+nbits].tobytes()
+
     def tobytes(self) -> bytes:
         return self.bits[self.pos:].tobytes()
 
