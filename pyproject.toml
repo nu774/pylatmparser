@@ -11,4 +11,5 @@ license = {text = "MIT License"}
 
 [project.scripts]
 latm2adts = "pylatmparser:latm2adts"
+latm2mp4 = "pylatmparser:latm2mp4"
 latmdump = "pylatmparser:latmdump"

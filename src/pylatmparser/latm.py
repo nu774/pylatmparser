@@ -21,6 +21,7 @@ class Stream:
     program: int = 0
     layer: int = 0
     audio_specific_config: AudioSpecificConfig | None = None
+    audio_specific_config_bytes: bytes = b''
     frame_length_type:int = 0
     latm_buffer_fullness:int | None = None
     core_frame_offset:int | None = None
@@ -69,11 +70,12 @@ class StreamMuxConfig:
                 
                 if use_same_config:
                     stream.audio_specific_config = obj.streams[-1].audio_specific_config
+                    stream.audio_specific_config_bytes = obj.streams[-1].audio_specific_config_bytes
                 elif obj.audio_mux_version == 0:
-                    stream.audio_specific_config = cls._decode_asc(bits, asc_cache, stream.id)
+                    stream.audio_specific_config, stream.audio_specific_config_bytes = cls._decode_asc(bits, asc_cache, stream.id)
                 else:
                     asc_len = bits.latm_get_value()
-                    stream.audio_specific_config = cls._decode_asc(bits, asc_cache, stream.id, asc_len)
+                    stream.audio_specific_config, stream.audio_specific_config_bytes = cls._decode_asc(bits, asc_cache, stream.id, asc_len)
                 
                 stream.frame_length_type = bits.read(3)
                 if stream.frame_length_type == 0:
@@ -107,12 +109,16 @@ class StreamMuxConfig:
         return obj
 
     @staticmethod
-    def _decode_asc(bits: BitReader, asc_cache: list | None, stream_id: int, bits_to_decode: int = 0) -> AudioSpecificConfig:
+    def _decode_asc(bits: BitReader, asc_cache: list | None, stream_id: int, bits_to_decode: int = 0) -> tuple[AudioSpecificConfig, bytes]:
         if asc_cache is None:
-            return AudioSpecificConfig.decode(bits, bits_to_decode)
+            asc_start = bits.tell()
+            obj = AudioSpecificConfig.decode(bits, bits_to_decode)
+            return obj, bits.peek_bytes(asc_start, bits.tell() - asc_start)
         while len(asc_cache) <= stream_id:
             asc_cache.append([None])
-        return AudioSpecificConfig.decode_cached(bits, asc_cache[stream_id], bits_to_decode)
+        obj = AudioSpecificConfig.decode_cached(bits, asc_cache[stream_id], bits_to_decode)
+        _, raw_bytes, _ = asc_cache[stream_id][0]
+        return obj, raw_bytes
 
 
 @dataclass(eq=True, slots=True)
