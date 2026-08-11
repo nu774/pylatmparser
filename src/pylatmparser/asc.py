@@ -73,7 +73,7 @@ class ProgramConfigElement:
     comment_field_data: bytes = b''
 
     @classmethod
-    def decode(cls, bits: BitReader) -> ProgramConfigElement:
+    def decode(cls, bits: BitReader, asc_start: int) -> ProgramConfigElement:
         obj = ProgramConfigElement()
         obj.element_instance_tag = bits.read(4)
         obj.object_type = bits.read(2)
@@ -116,7 +116,10 @@ class ProgramConfigElement:
         for _ in range(num_valid_cc_elements):
             obj.valid_cc_elements.append(CCElement.decode(bits))
 
-        bits.byte_align()
+        # byte_align() here must be relative to the start of the ASC, not the
+        # underlying buffer, since the ASC can start at an arbitrary bit offset
+        # within the enclosing LATM/LOAS frame.
+        bits.skip((-(bits.tell() - asc_start)) % 8)
         comment_field_bytes = bits.read(8)
         if comment_field_bytes:
             obj.comment_field_data = bits.read_bytes(comment_field_bytes)
@@ -181,7 +184,7 @@ class GASpecificConfig:
     extension_flag3: int | None = None
 
     @classmethod
-    def decode(cls, bits: BitReader, format: Format) -> GASpecificConfig:
+    def decode(cls, bits: BitReader, format: Format, asc_start: int) -> GASpecificConfig:
         obj = GASpecificConfig()
         obj.frame_length_flag = bits.read(1)
         obj.depends_on_core_coder = bits.read(1)
@@ -189,7 +192,7 @@ class GASpecificConfig:
             obj.core_coder_delay = bits.read(14)
         obj.extension_flag = bits.read(1)
         if format.channel_configuration == 0:
-            obj.program_config_elment = ProgramConfigElement.decode(bits)
+            obj.program_config_elment = ProgramConfigElement.decode(bits, asc_start)
         if format.audio_object_type in (6, 20):
             obj.layer_nr = bits.read(3)
         if obj.extension_flag:
@@ -335,53 +338,50 @@ class AudioSpecificConfig:
 
     @classmethod
     def decode(cls, bits: BitReader, bits_to_decode: int=0) -> AudioSpecificConfig:
-        # Since PCE needs byte_align() relative to the beginning of ASC, we need new BitStream
-        bits1 = BitReader(bits.tobytes())
+        asc_start = bits.tell()
         obj = AudioSpecificConfig()
-        obj.format.audio_object_type = decode_audio_object_type(bits1)
-        obj.format.decode_sampling_frequency(bits1)
-        obj.format.channel_configuration = bits1.read(4)
+        obj.format.audio_object_type = decode_audio_object_type(bits)
+        obj.format.decode_sampling_frequency(bits)
+        obj.format.channel_configuration = bits.read(4)
 
         if obj.format.audio_object_type in (5, 29):
             obj.extension_format = Format(audio_object_type=5)
             obj.sbr_present_flag = 1
             if obj.format.audio_object_type == 29:
                 obj.ps_present_flag = 1
-            obj.extension_format.decode_sampling_frequency(bits1)
-            obj.format.audio_object_type = decode_audio_object_type(bits1)
+            obj.extension_format.decode_sampling_frequency(bits)
+            obj.format.audio_object_type = decode_audio_object_type(bits)
             if obj.format.audio_object_type == 22:
-                obj.extension_format.channel_configuration = bits1.read(4)
+                obj.extension_format.channel_configuration = bits.read(4)
         if obj.format.audio_object_type in (1, 2, 3, 4, 6, 7, 17, 19, 20, 21, 22, 23):
-            obj.codec_specific_config = GASpecificConfig.decode(bits1, obj.format)
+            obj.codec_specific_config = GASpecificConfig.decode(bits, obj.format, asc_start)
         elif obj.format.audio_object_type == 39:
-            obj.codec_specific_config = ELDSpecificConfig.decode(bits1, obj.format.channel_configuration)
+            obj.codec_specific_config = ELDSpecificConfig.decode(bits, obj.format.channel_configuration)
         else:
             raise NotImplementedError(f"unsupported AOT: {obj.format.audio_object_type}")
         if obj.format.audio_object_type in (17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 39):
-            obj.ep_config = bits1.read(2)
+            obj.ep_config = bits.read(2)
             if obj.ep_config in (2, 3):
                 raise NotImplementedError(f"error protection is unsupported: ep_config: {obj.ep_config}")
-        if obj.sbr_present_flag == -1 and bits_to_decode - bits1.tell() >= 16:
-            if bits1.read(11) == 0x2b7:
+        if obj.sbr_present_flag == -1 and bits_to_decode - (bits.tell() - asc_start) >= 16:
+            if bits.read(11) == 0x2b7:
                 obj.extension_format = Format()
-                obj.extension_format.audio_object_type = decode_audio_object_type(bits1)
+                obj.extension_format.audio_object_type = decode_audio_object_type(bits)
                 if obj.extension_format.audio_object_type == 5:
-                    obj.sbr_present_flag = bits1.read(1)
+                    obj.sbr_present_flag = bits.read(1)
                     if obj.sbr_present_flag:
-                        obj.extension_format.decode_sampling_frequency(bits1)
-                        if bits_to_decode - bits1.tell() >= 12:
-                            if bits1.read(11) == 0x548:
+                        obj.extension_format.decode_sampling_frequency(bits)
+                        if bits_to_decode - (bits.tell() - asc_start) >= 12:
+                            if bits.read(11) == 0x548:
                                 obj.ps_present_flag = 1
                 if obj.extension_format.audio_object_type == 22:
-                    obj.sbr_present_flag = bits1.read(1)
+                    obj.sbr_present_flag = bits.read(1)
                     if obj.sbr_present_flag:
-                        obj.extension_format.decode_sampling_frequency(bits1)
-                    obj.extension_format.channel_configuration = bits1.read(4)
-        # consume the original BitStream
+                        obj.extension_format.decode_sampling_frequency(bits)
+                    obj.extension_format.channel_configuration = bits.read(4)
+        # consume up to the declared ASC length; there may be trailing bits we don't parse
         if bits_to_decode:
-            bits.skip(bits_to_decode)
-        else:
-            bits.skip(bits1.tell())
+            bits.skip(bits_to_decode - (bits.tell() - asc_start))
         return obj
     
     @property
