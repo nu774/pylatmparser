@@ -1,6 +1,6 @@
 [project]
 name = "pylatmparser"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [ "flac_bitstream@git+https://github.com/nu774/flac_bitstream" ]
 requires-python = ">= 3.10"
 authors = [

@@ -149,21 +149,23 @@ def _stsc(sample_count: int) -> bytes:
 
 
 def _stsz(sizes: list[int]) -> bytes:
+    # Pack the whole array in one call: `payload += ...` in a loop is O(n^2)
+    # since bytes are immutable (each += recopies everything accumulated so far).
     payload = struct.pack('>II', 0, len(sizes))
-    for s in sizes:
-        payload += struct.pack('>I', s)
+    if sizes:
+        payload += struct.pack(f'>{len(sizes)}I', *sizes)
     return _full_box(b'stsz', 0, 0, payload)
 
 
 def _stco_or_co64(offsets: list[int]) -> bytes:
     if offsets and max(offsets) > 0xffffffff:
         payload = struct.pack('>I', len(offsets))
-        for o in offsets:
-            payload += struct.pack('>Q', o)
+        if offsets:
+            payload += struct.pack(f'>{len(offsets)}Q', *offsets)
         return _full_box(b'co64', 0, 0, payload)
     payload = struct.pack('>I', len(offsets))
-    for o in offsets:
-        payload += struct.pack('>I', o)
+    if offsets:
+        payload += struct.pack(f'>{len(offsets)}I', *offsets)
     return _full_box(b'stco', 0, 0, payload)
 
 
